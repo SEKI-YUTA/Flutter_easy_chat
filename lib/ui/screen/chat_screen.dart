@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:easy_chat_app/services/theme_service.dart';
 import 'package:flutter/material.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
@@ -14,9 +15,13 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
   // final String serverURL = "https://mysterious-peak-16231.herokuapp.com/";
-  final String serverURL = "http://localhost:3000";
+  final String serverURL = "https://mysterious-peak-16231.herokuapp.com/";
+  String mychatId = "";
   late IO.Socket socket;
-  List<String> messages = ["Hi!", "Hello"];
+  List<Map<String, dynamic>> messages = [
+    // {"id": "xxxx", "message": "Hello"},
+    // {"id": "yyy", "message": "Hi"},
+  ];
   @override
   void initState() {
     super.initState();
@@ -31,10 +36,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void initSocket() {
     print('initSocket');
-    // socket = IO.io(serverURL);
-    //     const name = prompt("Waht is your name?");
-    // appednMessage("You joined!");
-    // socket.emit("new-user", name);
     socket = IO.io(serverURL);
     socket.connect();
 
@@ -43,50 +44,49 @@ class _ChatScreenState extends State<ChatScreen> {
     // });
     socket.onConnect((data) {
       print('connected!');
-      socket.emit("new-user", "名無し");
+      print('socketid is ${socket.id}');
+      socket.emit('new-user', "");
+      setState(() {
+        mychatId = socket.id.toString();
+      });
     });
 
     socket.on("chat-message", (data) {
-      // console.log(data);
-      // appednMessage(`${data.name}: ${data.message}`);
+      print("data${data}");
       setState(() {
-        messages = [...messages, data["message"]];
+        messages = [...messages, data];
       });
     });
-    socket.on("user-connected", (name) {
-      // appednMessage(`${name} connected`);
+    socket.on("user-connected", (id) {
       setState(() {
-        messages = [...messages, "someone connected"];
-      });
-    });
-
-    socket.on("user-disconnected", (name) {
-      // appednMessage(`${name} disconnected`);
-      setState(() {
-        messages = [...messages, "someone left"];
+        messages = [
+          ...messages,
+          {"id": "usernotification", "message": "someone connected"}
+        ];
       });
     });
 
-    // messageForm.addEventListener("submit", (e) => {
-    //   e.preventDefault();
-    //   const message = messageInput.value;
-    //   appednMessage(`You: ${message}`);
-    //   socket.emit("send-chat-message", message);
-    //   messageInput.value = "";
-    // });
-
-    // function appednMessage(message) {
-    //   const messageElement = document.createElement("div");
-    //   messageElement.innerText = message;
-    //   messageContainer.append(messageElement);
-    // }
+    socket.on("user-disconnected", (id) {
+      setState(() {
+        messages = [
+          ...messages,
+          {"id": "usernotification", "message": "someone left"}
+        ];
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Easy Chat'),
+        title: const Text('Easy Chat'),
+        leading: IconButton(
+          icon: Icon(Icons.nightlight),
+          onPressed: () {
+            ThemeService().switchTheme();
+          },
+        ),
       ),
       body: Container(
         child: Stack(
@@ -105,7 +105,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 height: MediaQuery.of(context).size.height,
               ),
             ),
-            Text(socket.connected.toString()),
             ListView.builder(
               itemCount: messages.length,
               itemBuilder: ((context, index) {
@@ -114,17 +113,37 @@ class _ChatScreenState extends State<ChatScreen> {
                       top: 5, left: 20, right: 20, bottom: 10),
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                      color: Colors.grey[300],
+                      color: Colors.transparent,
                       borderRadius: BorderRadius.circular(10)),
-                  child: Text(messages[index]),
+                  child: Container(
+                    width: 200,
+                    child: Column(
+                      crossAxisAlignment: messages[index]["id"] == mychatId
+                          ? CrossAxisAlignment.end
+                          : CrossAxisAlignment.start,
+                      children: [
+                        Text(messages[index]["message"]),
+                        SizedBox(
+                          width: 10,
+                        ),
+                        // Text("send by:${messages[index]["name"]}"),
+                      ],
+                    ),
+                  ),
                 );
               }),
             ),
-            _msgInputBar(_messageController, () {
+            _msgInputBar(context, _messageController, () {
               if (_messageController.text != "") {
                 socket.emit("send-chat-message", _messageController.text);
                 setState(() {
-                  messages = [...messages, _messageController.text];
+                  messages = [
+                    ...messages,
+                    {
+                      "id": "${socket.id}",
+                      "message": "${_messageController.text}"
+                    }
+                  ];
                 });
                 _messageController.text = "";
                 print('send message:${_messageController.text}');
@@ -136,13 +155,14 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Positioned _msgInputBar(
+  Positioned _msgInputBar(BuildContext context,
       TextEditingController controller, Function()? onPressed) {
     return Positioned(
       bottom: 10,
       left: 0,
       right: 0,
       child: Container(
+        color: Colors.white,
         padding: const EdgeInsets.all(10),
         child: Row(
           children: [
